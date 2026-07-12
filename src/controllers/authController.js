@@ -74,7 +74,7 @@ async function changePassword(req, res, next) {
     }
 
     const user = await UserModel.findById(req.userId);
-    const fullUser = await UserModel.findByEmail(user.email); // need password_hash, findById doesn't return it
+    const fullUser = await UserModel.findByEmail(user.email);
     const matches = await bcrypt.compare(currentPassword, fullUser.password_hash);
     if (!matches) {
       return res.status(401).json({ error: 'Current password is incorrect' });
@@ -90,4 +90,4 @@ async function changePassword(req, res, next) {
 
 module.exports = { register, login, me, changePassword };
 
-module.exports = { register, login, me };
+
