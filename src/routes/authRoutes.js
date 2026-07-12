@@ -1,8 +1,4 @@
 const express = require('express');
-<<<<<<< HEAD
-const { requireAuth } = require('../middleware/auth');
-=======
->>>>>>> bde03ee (Updated few errors)
 const { register, login, me, changePassword } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 
