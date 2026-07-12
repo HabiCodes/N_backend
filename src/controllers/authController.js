@@ -66,5 +66,28 @@ async function me(req, res, next) {
     next(err);
   }
 }
+async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    const user = await UserModel.findById(req.userId);
+    const fullUser = await UserModel.findByEmail(user.email); // need password_hash, findById doesn't return it
+    const matches = await bcrypt.compare(currentPassword, fullUser.password_hash);
+    if (!matches) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await require('../config/db').query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { register, login, me, changePassword };
 
 module.exports = { register, login, me };
