@@ -1,5 +1,4 @@
 const express = require('express');
-const { register, login, me } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 const { register, login, me, changePassword } = require('../controllers/authController');
 router.post('/change-password', requireAuth, changePassword);
