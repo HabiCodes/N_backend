@@ -57,3 +57,16 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_conv_sender_clientmsg
     ON messages (conversation_id, sender_id, client_msg_id)
     WHERE client_msg_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS calls (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    caller_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    callee_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+    call_type       VARCHAR(10) NOT NULL DEFAULT 'audio', -- audio | video
+    status          VARCHAR(15) NOT NULL DEFAULT 'missed', -- completed | missed | rejected
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ended_at        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_calls_participants ON calls (caller_id, callee_id, started_at DESC);
