@@ -1,5 +1,6 @@
 const { isOnline } = require('./onlineUsers');
 const CallModel = require('../models/callModel');
+const UserModel = require('../models/userModel');
 
 function registerCallHandlers(io, socket) {
   socket.on('call:invite', async ({ toUserId, conversationId, callType }, ack) => {
@@ -13,8 +14,10 @@ function registerCallHandlers(io, socket) {
         conversationId,
         callType: callType || 'audio',
       });
+      const caller = await UserModel.findById(socket.userId);
       io.to(toUserId).emit('call:incoming', {
         fromUserId: socket.userId,
+        fromUsername: caller?.username || 'Unknown',
         conversationId,
         callType,
         callId,
