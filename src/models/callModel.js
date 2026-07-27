@@ -1,14 +1,14 @@
 const { query } = require('../config/db');
 
 const CallModel = {
-  async create({ callerId, calleeId, conversationId, callType }) {
-    const { rows } = await query(
-      `INSERT INTO calls (caller_id, callee_id, conversation_id, call_type)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [callerId, calleeId, conversationId, callType]
-    );
-    return rows[0].id;
-  },
+async create({ callerId, calleeId, conversationId, callType }) {
+  const { rows } = await query(
+    `INSERT INTO calls (caller_id, callee_id, conversation_id, call_type, status)
+     VALUES ($1, $2, $3, $4, 'ringing') RETURNING id`,
+    [callerId, calleeId, conversationId, callType]
+  );
+  return rows[0].id;
+},
 
   async markStatus(callId, status) {
     await query(

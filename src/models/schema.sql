@@ -70,3 +70,23 @@ CREATE TABLE IF NOT EXISTS calls (
 );
 
 CREATE INDEX IF NOT EXISTS idx_calls_participants ON calls (caller_id, callee_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS pending_registrations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    username VARCHAR(50) NOT NULL,
+
+    email VARCHAR(255) NOT NULL UNIQUE,
+
+    password_hash TEXT NOT NULL,
+
+    otp_hash TEXT NOT NULL,
+
+    otp_expires_at TIMESTAMPTZ NOT NULL,
+
+    otp_attempts INTEGER NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pending_registrations_expires
+    ON pending_registrations (otp_expires_at);

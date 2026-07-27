@@ -1,12 +1,17 @@
 const jwt = require('jsonwebtoken');
 const { jwtSecret, jwtExpiresIn } = require('../config/env');
 
-function signToken(payload) {
-  return jwt.sign(payload, jwtSecret, { expiresIn: jwtExpiresIn });
+function signToken(payload, expiresIn = jwtExpiresIn) {
+  return jwt.sign(payload, jwtSecret, {
+    expiresIn,
+  });
 }
 
 function verifyToken(token) {
-  return jwt.verify(token, jwtSecret); // throws if invalid/expired
+  return jwt.verify(token, jwtSecret);
 }
 
-module.exports = { signToken, verifyToken };
+module.exports = {
+  signToken,
+  verifyToken,
+};
