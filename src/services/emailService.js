@@ -1,13 +1,14 @@
 const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
-     host: "smtp.gmail.com",
-     port: 587,
-     secure: false,
-     requireTLS: true,
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    family: 4, // force IPv4 - Render can't route outbound IPv6 to Gmail's SMTP servers
     auth: {
-        user: process.env.GMAIL_USER,          // verifynchatapp@gmail.com
-        pass: process.env.GMAIL_APP_PASSWORD,  // 16-char Gmail App Password
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
     },
 });
 
