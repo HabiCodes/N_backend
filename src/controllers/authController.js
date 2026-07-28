@@ -117,7 +117,7 @@ async function registerRequest(req, res, next) {
 
     await sendVerificationEmail(email, otp);
 
-    r// Respond immediately - don't make the client wait on Gmail's SMTP
+    // Respond immediately - don't make the client wait on Gmail's SMTP
     // round-trip, which can be slow and stacks with Render cold-start time.
     res.status(200).json({
       message: 'Verification code sent to your email',
