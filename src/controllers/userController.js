@@ -10,5 +10,15 @@ async function search(req, res, next) {
     next(err);
   }
 }
+async function updateFcmToken(req, res, next) {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) return res.status(400).json({ error: 'fcmToken is required' });
+    await UserModel.updateFcmToken(req.userId, fcmToken);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
 
-module.exports = { search };
+module.exports = { search, updateFcmToken };

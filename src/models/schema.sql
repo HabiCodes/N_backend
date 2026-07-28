@@ -90,3 +90,32 @@ CREATE TABLE IF NOT EXISTS pending_registrations (
 );
 CREATE INDEX IF NOT EXISTS idx_pending_registrations_expires
     ON pending_registrations (otp_expires_at);
+
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+
+    otp_hash TEXT NOT NULL,
+
+    otp_expires_at TIMESTAMPTZ NOT NULL,
+
+    otp_attempts INTEGER NOT NULL DEFAULT 0,
+
+    purpose VARCHAR(30) NOT NULL DEFAULT 'forgot_password',
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    otp_hash        TEXT NOT NULL,
+    otp_expires_at  TIMESTAMPTZ NOT NULL,
+    otp_attempts    INTEGER NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_expires
+    ON password_reset_requests (otp_expires_at);
