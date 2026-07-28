@@ -1,41 +1,46 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    family: 4, // force IPv4 - Render can't route outbound IPv6 to Gmail's SMTP servers
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-    },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendVerificationEmail(email, code) {
     try {
-        await transporter.sendMail({
-            from: `"NChat" <${process.env.GMAIL_USER}>`,
+        await resend.emails.send({
+            from: "NChat <noreply@yjfarms.info>",
             to: email,
             subject: "Your NChat verification code",
             html: `
-                <div style="font-family: Arial, sans-serif;">
+                <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto;">
                     <h2>Welcome to NChat 👋</h2>
 
                     <p>Your email verification code is:</p>
 
-                    <h1 style="letter-spacing: 8px;">
+                    <div style="
+                        font-size:32px;
+                        font-weight:bold;
+                        letter-spacing:8px;
+                        background:#f5f5f5;
+                        padding:16px;
+                        border-radius:8px;
+                        text-align:center;
+                    ">
                         ${code}
-                    </h1>
+                    </div>
 
-                    <p>This code expires in 10 minutes.</p>
+                    <p style="margin-top:20px;">
+                        This code expires in <strong>10 minutes</strong>.
+                    </p>
 
-                    <p>If you did not create an NChat account, you can ignore this email.</p>
+                    <p>
+                        If you didn't create an NChat account,
+                        you can safely ignore this email.
+                    </p>
                 </div>
             `,
         });
+
+        console.log("Verification email sent.");
     } catch (err) {
-        console.error("Email send failed:", err.message);
+        console.error(err);
         throw new Error("Failed to send verification email");
     }
 }
