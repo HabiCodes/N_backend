@@ -39,6 +39,9 @@ const UserModel = {
   async setOnlineStatus(userId, isOnline) {
     await query(`UPDATE users SET is_online = $1, last_seen_at = now() WHERE id = $2`, [isOnline, userId]);
   },
+  async updateFcmToken(userId, fcmToken) {
+  await query(`UPDATE users SET fcm_token = $1 WHERE id = $2`, [fcmToken, userId]);
+},
 };
 
 module.exports = UserModel;
