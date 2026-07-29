@@ -3,8 +3,13 @@ const CallModel = require('../models/callModel');
 const UserModel = require('../models/userModel');
 const ConversationModel = require('../models/conversationModel');
 
-const RING_TIMEOUT_MS = 45 * 1000; // give up after 45s of no answer
+const RING_TIMEOUT_MS = 45 * 1000;
 const activeRingTimeouts = new Map(); // callId -> Timeout handle
+
+// NEW: tracks who is legitimately allowed to signal on a given call.
+// This is what call:offer / call:answer / call:accept / call:ice-candidate
+// now check before relaying anything — closes the spoofing hole.
+const activeCalls = new Map(); // callId -> { callerId, calleeId }
 
 function clearRingTimeout(callId) {
   const handle = activeRingTimeouts.get(callId);
@@ -14,6 +19,10 @@ function clearRingTimeout(callId) {
   }
 }
 
+function isParticipant(call, userId) {
+  return !!call && (call.callerId === userId || call.calleeId === userId);
+}
+
 function registerCallHandlers(io, socket) {
   socket.on('call:invite', async ({ toUserId, conversationId, callType }, ack) => {
     try {
@@ -21,8 +30,6 @@ function registerCallHandlers(io, socket) {
         return ack?.({ error: 'Invalid call target' });
       }
 
-      // Make sure caller and callee actually share this conversation -
-      // prevents calling arbitrary user ids.
       const allowed = await ConversationModel.isParticipant(conversationId, socket.userId);
       const calleeAllowed = await ConversationModel.isParticipant(conversationId, toUserId);
       if (!allowed || !calleeAllowed) {
@@ -36,8 +43,16 @@ function registerCallHandlers(io, socket) {
         callType: callType || 'audio',
       });
 
+      // NEW: register this call as active BEFORE anything else can reference it
+      activeCalls.set(callId, { callerId: socket.userId, calleeId: toUserId });
+
       if (!isOnline(toUserId)) {
+        // TODO: this is where you should trigger an FCM push instead of
+        // instantly giving up — right now, calling anyone whose app isn't
+        // actively connected always fails as "missed" with no ring at all.
+        // e.g. await sendCallPushNotification(toUserId, { fromUserId: socket.userId, callId, conversationId, callType })
         await CallModel.markStatus(callId, 'missed');
+        activeCalls.delete(callId);
         return ack?.({ error: 'User is offline', callId });
       }
 
@@ -51,8 +66,6 @@ function registerCallHandlers(io, socket) {
         callId,
       });
 
-      // If nobody accepts/rejects within RING_TIMEOUT_MS, auto-mark missed
-      // and tell the caller so their UI doesn't hang on "ringing" forever.
       const timeoutHandle = setTimeout(async () => {
         try {
           await CallModel.markStatus(callId, 'missed');
@@ -62,11 +75,11 @@ function registerCallHandlers(io, socket) {
           console.error('[call:invite] ring-timeout handling failed:', err.message);
         } finally {
           activeRingTimeouts.delete(callId);
+          activeCalls.delete(callId); // NEW: clean up so the callId can't be reused/spoofed after it's dead
         }
       }, RING_TIMEOUT_MS);
 
       activeRingTimeouts.set(callId, timeoutHandle);
-
       ack?.({ status: 'ringing', callId });
     } catch (err) {
       console.error('[call:invite] failed:', err.message);
@@ -74,8 +87,12 @@ function registerCallHandlers(io, socket) {
     }
   });
 
+  // FIXED: validate callId + sender before trusting an "accept"
   socket.on('call:accept', ({ toUserId, conversationId, callId }) => {
     try {
+      const call = activeCalls.get(callId);
+      if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
+
       if (callId) clearRingTimeout(callId);
       io.to(toUserId).emit('call:accepted', { fromUserId: socket.userId, conversationId, callId });
     } catch (err) {
@@ -85,9 +102,13 @@ function registerCallHandlers(io, socket) {
 
   socket.on('call:reject', async ({ toUserId, conversationId, callId, reason }) => {
     try {
+      const call = activeCalls.get(callId);
+      if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
+
       if (callId) {
         clearRingTimeout(callId);
         await CallModel.markStatus(callId, 'rejected');
+        activeCalls.delete(callId);
       }
       io.to(toUserId).emit('call:rejected', { fromUserId: socket.userId, conversationId, reason: reason || 'declined' });
     } catch (err) {
@@ -95,16 +116,23 @@ function registerCallHandlers(io, socket) {
     }
   });
 
-  socket.on('call:offer', ({ toUserId, sdp }) => {
-    io.to(toUserId).emit('call:offer', { fromUserId: socket.userId, sdp });
+  // FIXED: all three signaling-relay events now require a valid, active callId
+  socket.on('call:offer', ({ toUserId, callId, sdp }) => {
+    const call = activeCalls.get(callId);
+    if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
+    io.to(toUserId).emit('call:offer', { fromUserId: socket.userId, callId, sdp });
   });
 
-  socket.on('call:answer', ({ toUserId, sdp }) => {
-    io.to(toUserId).emit('call:answer', { fromUserId: socket.userId, sdp });
+  socket.on('call:answer', ({ toUserId, callId, sdp }) => {
+    const call = activeCalls.get(callId);
+    if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
+    io.to(toUserId).emit('call:answer', { fromUserId: socket.userId, callId, sdp });
   });
 
-  socket.on('call:ice-candidate', ({ toUserId, candidate }) => {
-    io.to(toUserId).emit('call:ice-candidate', { fromUserId: socket.userId, candidate });
+  socket.on('call:ice-candidate', ({ toUserId, callId, candidate }) => {
+    const call = activeCalls.get(callId);
+    if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
+    io.to(toUserId).emit('call:ice-candidate', { fromUserId: socket.userId, callId, candidate });
   });
 
   socket.on('call:end', async ({ toUserId, conversationId, callId }) => {
@@ -112,6 +140,7 @@ function registerCallHandlers(io, socket) {
       if (callId) {
         clearRingTimeout(callId);
         await CallModel.markStatus(callId, 'completed');
+        activeCalls.delete(callId); // NEW
       }
       io.to(toUserId).emit('call:ended', { fromUserId: socket.userId, conversationId });
     } catch (err) {

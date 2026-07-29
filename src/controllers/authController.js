@@ -114,7 +114,6 @@ async function registerRequest(req, res, next) {
     // -------------------------
     // Send OTP email
     // -------------------------
-
     await sendVerificationEmail(email, otp);
 
     // Respond immediately - don't make the client wait on Gmail's SMTP
