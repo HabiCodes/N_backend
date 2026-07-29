@@ -37,3 +37,6 @@ temp/
 # Misc
 *.pid
 *.seed
+
+src/config/secrets/
+.env

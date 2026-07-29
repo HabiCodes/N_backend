@@ -16,14 +16,14 @@ const UserModel = {
     return rows[0] || null;
   },
 
-  async findById(id) {
+async findById(id) {
     const { rows } = await query(
-      `SELECT id, username, email, avatar_url, is_online, last_seen_at, created_at
+      `SELECT id, username, email, avatar_url, is_online, last_seen_at, created_at, fcm_token
        FROM users WHERE id = $1`,
       [id]
     );
     return rows[0] || null;
-  },
+},
 
   async searchByUsername(fragment, excludeUserId) {
     const { rows } = await query(

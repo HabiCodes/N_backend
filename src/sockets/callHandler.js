@@ -1,15 +1,12 @@
 const { isOnline } = require('./onlineUsers');
+const { sendCallPushNotification } = require('../services/pushNotifications');
 const CallModel = require('../models/callModel');
 const UserModel = require('../models/userModel');
 const ConversationModel = require('../models/conversationModel');
 
 const RING_TIMEOUT_MS = 45 * 1000;
-const activeRingTimeouts = new Map(); // callId -> Timeout handle
-
-// NEW: tracks who is legitimately allowed to signal on a given call.
-// This is what call:offer / call:answer / call:accept / call:ice-candidate
-// now check before relaying anything — closes the spoofing hole.
-const activeCalls = new Map(); // callId -> { callerId, calleeId }
+const activeRingTimeouts = new Map();
+const activeCalls = new Map();
 
 function clearRingTimeout(callId) {
   const handle = activeRingTimeouts.get(callId);
@@ -43,29 +40,46 @@ function registerCallHandlers(io, socket) {
         callType: callType || 'audio',
       });
 
-      // NEW: register this call as active BEFORE anything else can reference it
       activeCalls.set(callId, { callerId: socket.userId, calleeId: toUserId });
-
-      if (!isOnline(toUserId)) {
-        // TODO: this is where you should trigger an FCM push instead of
-        // instantly giving up — right now, calling anyone whose app isn't
-        // actively connected always fails as "missed" with no ring at all.
-        // e.g. await sendCallPushNotification(toUserId, { fromUserId: socket.userId, callId, conversationId, callType })
-        await CallModel.markStatus(callId, 'missed');
-        activeCalls.delete(callId);
-        return ack?.({ error: 'User is offline', callId });
-      }
 
       const caller = await UserModel.findById(socket.userId);
 
-      io.to(toUserId).emit('call:incoming', {
-        fromUserId: socket.userId,
-        fromUsername: caller?.username || 'Unknown',
-        conversationId,
-        callType,
-        callId,
-      });
+      if (isOnline(toUserId)) {
+        // Callee has a live socket — signal them directly.
+        io.to(toUserId).emit('call:incoming', {
+          fromUserId: socket.userId,
+          fromUsername: caller?.username || 'Unknown',
+          conversationId,
+          callType,
+          callId,
+        });
+      } else {
+        // Callee is offline — try to wake their device via push instead.
+        const callee = await UserModel.findById(toUserId);
 
+        const pushSent = callee?.fcm_token
+          ? await sendCallPushNotification(callee.fcm_token, {
+              fromUserId: socket.userId,
+              fromUsername: caller?.username || 'Unknown',
+              callId,
+              conversationId,
+              callType: callType || 'audio',
+            })
+          : false;
+
+        if (!pushSent) {
+          await CallModel.markStatus(callId, 'missed');
+          activeCalls.delete(callId);
+          return ack?.({ error: 'User unreachable', callId });
+        }
+        // Push sent — fall through to the shared ring-timeout logic below,
+        // same as the online case. If the callee's app wakes up, reconnects
+        // its socket, and accepts/rejects within RING_TIMEOUT_MS, the normal
+        // call:accept / call:reject handlers take it from here.
+      }
+
+      // Single shared timeout + single ack, for BOTH the online and
+      // push-woken paths.
       const timeoutHandle = setTimeout(async () => {
         try {
           await CallModel.markStatus(callId, 'missed');
@@ -75,7 +89,7 @@ function registerCallHandlers(io, socket) {
           console.error('[call:invite] ring-timeout handling failed:', err.message);
         } finally {
           activeRingTimeouts.delete(callId);
-          activeCalls.delete(callId); // NEW: clean up so the callId can't be reused/spoofed after it's dead
+          activeCalls.delete(callId);
         }
       }, RING_TIMEOUT_MS);
 
@@ -87,7 +101,6 @@ function registerCallHandlers(io, socket) {
     }
   });
 
-  // FIXED: validate callId + sender before trusting an "accept"
   socket.on('call:accept', ({ toUserId, conversationId, callId }) => {
     try {
       const call = activeCalls.get(callId);
@@ -116,7 +129,6 @@ function registerCallHandlers(io, socket) {
     }
   });
 
-  // FIXED: all three signaling-relay events now require a valid, active callId
   socket.on('call:offer', ({ toUserId, callId, sdp }) => {
     const call = activeCalls.get(callId);
     if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
@@ -140,7 +152,7 @@ function registerCallHandlers(io, socket) {
       if (callId) {
         clearRingTimeout(callId);
         await CallModel.markStatus(callId, 'completed');
-        activeCalls.delete(callId); // NEW
+        activeCalls.delete(callId);
       }
       io.to(toUserId).emit('call:ended', { fromUserId: socket.userId, conversationId });
     } catch (err) {
