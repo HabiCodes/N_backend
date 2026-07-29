@@ -36,5 +36,35 @@ async function sendCallPushNotification(fcmToken, { fromUserId, fromUsername, ca
     return false;
   }
 }
+/**
+ * Sends a data-only FCM message for a new chat message, for recipients
+ * who are currently offline (no live socket). Data-only for the same
+ * reason as calls — keeps onMessageReceived() in control on Android.
+ */
+async function sendMessagePushNotification(fcmToken, { fromUserId, fromUsername, conversationId, preview }) {
+  if (!fcmToken) return false;
 
-module.exports = { sendCallPushNotification };
+  const message = {
+    token: fcmToken,
+    data: {
+      type: 'new_message',
+      fromUserId,
+      fromUsername,
+      conversationId,
+      preview: preview.slice(0, 120), // keep payload small, notification doesn't need the full text
+    },
+    android: {
+      priority: 'high',
+    },
+  };
+
+  try {
+    await admin.messaging().send(message);
+    return true;
+  } catch (err) {
+    console.error('[sendMessagePushNotification] failed:', err.message);
+    return false;
+  }
+}
+
+module.exports = { sendCallPushNotification, sendMessagePushNotification };

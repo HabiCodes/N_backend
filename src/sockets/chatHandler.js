@@ -1,14 +1,12 @@
 const ConversationModel = require('../models/conversationModel');
 const MessageModel = require('../models/messageModel');
-const { getSocketIds } = require('./onlineUsers');
+const UserModel = require('../models/userModel');                          // add this
+const { isOnline } = require('./onlineUsers');                             // add this
+const { sendMessagePushNotification } = require('../services/pushNotifications'); // add this
 
-// Room naming convention: every user joins a room named after their own id.
-// This means "send to user X" is just io.to(X).emit(...) - no need to track
-// individual socket ids for messaging (only presence needs that).
 function registerChatHandlers(io, socket) {
   socket.join(socket.userId);
 
-  // Client sends: { conversationId, content, clientMsgId }
   socket.on('message:send', async (payload, ack) => {
     try {
       const { conversationId, content, clientMsgId } = payload;
@@ -27,19 +25,35 @@ function registerChatHandlers(io, socket) {
         clientMsgId,
       });
 
-      // Acknowledge the sender immediately (their UI can stop showing "sending...")
       ack?.({ message });
 
-      // Deliver to everyone else in the conversation who's currently connected
+      const sender = await UserModel.findById(socket.userId);
       const recipientIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
-      recipientIds.forEach((userId) => {
-        io.to(userId).emit('message:new', { message });
-      });
+
+      for (const userId of recipientIds) {
+        if (isOnline(userId)) {
+          // Live socket — deliver in real time, same as before.
+          io.to(userId).emit('message:new', { message });
+        } else {
+          // Offline — wake them with a push, same fallback pattern as calls.
+          const recipient = await UserModel.findById(userId);
+          if (recipient?.fcm_token) {
+            await sendMessagePushNotification(recipient.fcm_token, {
+              fromUserId: socket.userId,
+              fromUsername: sender?.username || 'Someone',
+              conversationId,
+              preview: content.trim(),
+            });
+          }
+        }
+      }
     } catch (err) {
       console.error('[socket] message:send failed', err);
       ack?.({ error: 'Failed to send message' });
     }
   });
+
+  // ...rest of the file (message:read, typing:start, typing:stop) stays exactly as-is
 
   // Client sends: { conversationId } when the other user's messages are visible on screen
 socket.on('message:read', async ({ conversationId }) => {
