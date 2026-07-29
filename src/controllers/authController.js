@@ -114,7 +114,6 @@ async function registerRequest(req, res, next) {
     // -------------------------
     // Send OTP email
     // -------------------------
-    await sendVerificationEmail(email, otp);
 
     // Respond immediately - don't make the client wait on Gmail's SMTP
     // round-trip, which can be slow and stacks with Render cold-start time.
@@ -472,14 +471,13 @@ async function requestForgotPassword(req, res, next) {
     // Send OTP
     // -------------------------
 
-    await sendVerificationEmail(
-      user.email,
-      otp
-    );
-
-    res.json({
+   res.json({
       message:
         'If an account exists, a verification code has been sent',
+    });
+
+    sendVerificationEmail(user.email, otp).catch((err) => {
+      console.error('Failed to send password-reset email (after response sent):', err.message);
     });
 
   } catch (err) {

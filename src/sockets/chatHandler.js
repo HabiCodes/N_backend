@@ -42,8 +42,9 @@ function registerChatHandlers(io, socket) {
   });
 
   // Client sends: { conversationId } when the other user's messages are visible on screen
-  socket.on('message:read', async ({ conversationId }) => {
+socket.on('message:read', async ({ conversationId }) => {
     try {
+      if (!conversationId) return;
       const readIds = await MessageModel.markReadUpTo(conversationId, socket.userId);
       if (!readIds.length) return;
 
@@ -56,15 +57,24 @@ function registerChatHandlers(io, socket) {
     }
   });
 
-  // Typing indicator - fire-and-forget, no DB write
   socket.on('typing:start', async ({ conversationId }) => {
-    const otherIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
-    otherIds.forEach((userId) => io.to(userId).emit('typing:start', { conversationId, userId: socket.userId }));
+    try {
+      if (!conversationId) return;
+      const otherIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
+      otherIds.forEach((userId) => io.to(userId).emit('typing:start', { conversationId, userId: socket.userId }));
+    } catch (err) {
+      console.error('[socket] typing:start failed', err);
+    }
   });
 
   socket.on('typing:stop', async ({ conversationId }) => {
-    const otherIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
-    otherIds.forEach((userId) => io.to(userId).emit('typing:stop', { conversationId, userId: socket.userId }));
+    try {
+      if (!conversationId) return;
+      const otherIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
+      otherIds.forEach((userId) => io.to(userId).emit('typing:stop', { conversationId, userId: socket.userId }));
+    } catch (err) {
+      console.error('[socket] typing:stop failed', err);
+    }
   });
 }
 
