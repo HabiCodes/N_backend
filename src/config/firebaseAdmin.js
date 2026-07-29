@@ -12,8 +12,10 @@ const keyPath =
 
 const serviceAccount = require(keyPath);
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+if (!admin.getApps().length) {
+  admin.initializeApp({
+    credential: admin.cert(serviceAccount),
+  });
+}
 
 module.exports = admin;
