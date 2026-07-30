@@ -43,9 +43,9 @@ function registerCallHandlers(io, socket) {
       activeCalls.set(callId, { callerId: socket.userId, calleeId: toUserId });
 
       const caller = await UserModel.findById(socket.userId);
+      const calleeOnline = isOnline(toUserId);
 
-      if (isOnline(toUserId)) {
-        // Callee has a live socket — signal them directly.
+      if (calleeOnline) {
         io.to(toUserId).emit('call:incoming', {
           fromUserId: socket.userId,
           fromUsername: caller?.username || 'Unknown',
@@ -53,33 +53,29 @@ function registerCallHandlers(io, socket) {
           callType,
           callId,
         });
-      } else {
-        // Callee is offline — try to wake their device via push instead.
-        const callee = await UserModel.findById(toUserId);
-
-        const pushSent = callee?.fcm_token
-          ? await sendCallPushNotification(callee.fcm_token, {
-              fromUserId: socket.userId,
-              fromUsername: caller?.username || 'Unknown',
-              callId,
-              conversationId,
-              callType: callType || 'audio',
-            })
-          : false;
-
-        if (!pushSent) {
-          await CallModel.markStatus(callId, 'missed');
-          activeCalls.delete(callId);
-          return ack?.({ error: 'User unreachable', callId });
-        }
-        // Push sent — fall through to the shared ring-timeout logic below,
-        // same as the online case. If the callee's app wakes up, reconnects
-        // its socket, and accepts/rejects within RING_TIMEOUT_MS, the normal
-        // call:accept / call:reject handlers take it from here.
       }
 
-      // Single shared timeout + single ack, for BOTH the online and
-      // push-woken paths.
+      // Always ALSO try a push, even when the callee looks online — our
+      // presence map can be briefly stale (process killed, ping-timeout
+      // hasn't fired yet). onIncomingCall() on the client is idempotent,
+      // so a redundant push while already ringing via socket is harmless.
+      const callee = await UserModel.findById(toUserId);
+      const pushSent = callee?.fcm_token
+        ? await sendCallPushNotification(callee.fcm_token, {
+            fromUserId: socket.userId,
+            fromUsername: caller?.username || 'Unknown',
+            callId,
+            conversationId,
+            callType: callType || 'audio',
+          })
+        : false;
+
+      if (!calleeOnline && !pushSent) {
+        await CallModel.markStatus(callId, 'missed');
+        activeCalls.delete(callId);
+        return ack?.({ error: 'User unreachable', callId });
+      }
+
       const timeoutHandle = setTimeout(async () => {
         try {
           await CallModel.markStatus(callId, 'missed');
@@ -101,15 +97,18 @@ function registerCallHandlers(io, socket) {
     }
   });
 
-  socket.on('call:accept', ({ toUserId, conversationId, callId }) => {
+  socket.on('call:accept', ({ toUserId, conversationId, callId }, ack) => {
     try {
       const call = activeCalls.get(callId);
-      if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
-
+      if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) {
+        return ack?.({ error: 'Call no longer active' });
+      }
       if (callId) clearRingTimeout(callId);
       io.to(toUserId).emit('call:accepted', { fromUserId: socket.userId, conversationId, callId });
+      ack?.({ status: 'accepted' });
     } catch (err) {
       console.error('[call:accept] failed:', err.message);
+      ack?.({ error: 'Failed to accept call' });
     }
   });
 
