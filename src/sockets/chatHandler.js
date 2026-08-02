@@ -31,7 +31,7 @@ function registerChatHandlers(io, socket) {
       const recipientIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
 
       for (const userId of recipientIds) {
-        if (isOnline(userId)) {
+        if (await isOnline(userId)) {
           // Live socket — deliver in real time, same as before.
           io.to(userId).emit('message:new', { message });
         } else {

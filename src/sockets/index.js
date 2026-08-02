@@ -11,7 +11,7 @@ function initSockets(io) {
     const { userId } = socket;
     console.log(`[socket] connected: user=${userId} socket=${socket.id}`);
 
-    const isFirstConnection = addSocket(userId, socket.id);
+    const isFirstConnection = await addSocket(userId, socket.id);
     if (isFirstConnection) {
       await UserModel.setOnlineStatus(userId, true);
       socket.broadcast.emit('presence:online', { userId });
@@ -22,7 +22,7 @@ function initSockets(io) {
 
     socket.on('disconnect', async () => {
       console.log(`[socket] disconnected: user=${userId} socket=${socket.id}`);
-      const isFullyOffline = removeSocket(userId, socket.id);
+      const isFullyOffline = await removeSocket(userId, socket.id);
       if (isFullyOffline) {
         await UserModel.setOnlineStatus(userId, false);
         socket.broadcast.emit('presence:offline', { userId });
