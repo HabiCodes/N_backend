@@ -141,7 +141,6 @@ function registerCallHandlers(io, socket) {
       ack?.({ error: 'Failed to accept call' });
     }
   });
-
 socket.on('call:reject', async ({ toUserId, conversationId, callId, reason }) => {
     try {
       const call = await getActiveCall(callId);
@@ -152,25 +151,25 @@ socket.on('call:reject', async ({ toUserId, conversationId, callId, reason }) =>
         await CallModel.markStatus(callId, 'rejected');
         await deleteActiveCall(callId);
       }
-    }catch (err) {
+      io.to(toUserId).emit('call:rejected', { fromUserId: socket.userId, conversationId, reason: reason || 'declined' });
+    } catch (err) {
       console.error('[call:reject] failed:', err.message);
     }
-
   });
 
-  socket.on('call:offer', ({ toUserId, callId, sdp }) => {
+  socket.on('call:offer', async ({ toUserId, callId, sdp }) => {
     const call = await getActiveCall(callId);
     if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
     io.to(toUserId).emit('call:offer', { fromUserId: socket.userId, callId, sdp });
   });
 
-  socket.on('call:answer', ({ toUserId, callId, sdp }) => {
-    const call = activeCalls.get(callId);
+  socket.on('call:answer', async ({ toUserId, callId, sdp }) => {
+    const call = await getActiveCall(callId);
     if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
     io.to(toUserId).emit('call:answer', { fromUserId: socket.userId, callId, sdp });
   });
 
-  socket.on('call:ice-candidate', ({ toUserId, callId, candidate }) => {
+  socket.on('call:ice-candidate', async ({ toUserId, callId, candidate }) => {
     const call = await getActiveCall(callId);
     if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) return;
     io.to(toUserId).emit('call:ice-candidate', { fromUserId: socket.userId, callId, candidate });
