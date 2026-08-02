@@ -40,3 +40,4 @@ temp/
 
 src/config/secrets/
 .env
+.env.example

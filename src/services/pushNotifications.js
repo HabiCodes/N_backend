@@ -1,4 +1,4 @@
-const admin = require('../config/firebaseAdmin');
+const { messaging } = require('../config/firebaseAdmin');
 
 /**
  * Sends a high-priority data-only FCM message for an incoming call.
@@ -25,8 +25,8 @@ async function sendCallPushNotification(fcmToken, { fromUserId, fromUsername, ca
     },
   };
 
-  try {
-    await admin.messaging().send(message);
+ try {
+    await messaging.send(message);
     return true;
   } catch (err) {
     console.error('[sendCallPushNotification] failed:', err.message);
@@ -59,7 +59,7 @@ async function sendMessagePushNotification(fcmToken, { fromUserId, fromUsername,
   };
 
   try {
-    await admin.messaging().send(message);
+    await messaging.send(message);
     return true;
   } catch (err) {
     console.error('[sendMessagePushNotification] failed:', err.message);

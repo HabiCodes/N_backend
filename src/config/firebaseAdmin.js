@@ -1,5 +1,6 @@
-const admin = require("firebase-admin");
 const path = require("path");
+const { initializeApp, cert, getApps } = require("firebase-admin/app");
+const { getMessaging } = require("firebase-admin/messaging");
 
 const keyPath =
   process.env.NODE_ENV === "production"
@@ -12,10 +13,12 @@ const keyPath =
 
 const serviceAccount = require(keyPath);
 
-if (!admin.getApps().length) {
-  admin.initializeApp({
-    credential: admin.cert(serviceAccount),
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
   });
 }
 
-module.exports = admin;
+// Export a ready-to-use messaging instance instead of the whole admin
+// namespace — pushNotifications.js only ever needed messaging anyway.
+module.exports = { messaging: getMessaging() };
