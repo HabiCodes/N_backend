@@ -129,7 +129,7 @@ function registerCallHandlers(io, socket) {
   socket.on('call:accept', async ({ toUserId, conversationId, callId }, ack) => {
     try {
       const call = await getActiveCall(callId);
-      const call = activeCalls.get(callId);
+      
       if (!isParticipant(call, socket.userId) || !isParticipant(call, toUserId)) {
         return ack?.({ error: 'Call no longer active' });
       }
