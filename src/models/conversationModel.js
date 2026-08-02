@@ -1,4 +1,5 @@
-const { query, pool } = require('../config/db');
+const { query, readQuery, pool } = require('../config/db');
+const cache = require('../services/cache');
 
 const ConversationModel = {
   async findDirectConversation(userIdA, userIdB) {
@@ -43,31 +44,33 @@ const ConversationModel = {
     return this.createDirectConversation(userIdA, userIdB);
   },
 
-  async listForUser(userId) {
-    const { rows } = await query(
-      `SELECT
-         c.id AS conversation_id,
-         c.is_group,
-         c.name,
-         other.id AS other_user_id,
-         other.username AS other_username,
-         other.avatar_url AS other_avatar_url,
-         other.is_online AS other_is_online,
-         lm.content AS last_message_content,
-         lm.created_at AS last_message_at
-       FROM conversations c
-       JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = $1
-       LEFT JOIN conversation_participants op ON op.conversation_id = c.id AND op.user_id != $1
-       LEFT JOIN users other ON other.id = op.user_id
-       LEFT JOIN LATERAL (
-         SELECT content, created_at FROM messages
-         WHERE conversation_id = c.id
-         ORDER BY created_at DESC LIMIT 1
-       ) lm ON true
-       ORDER BY lm.created_at DESC NULLS LAST`,
-      [userId]
-    );
-    return rows;
+async listForUser(userId) {
+    return cache.getOrSet(`conversations:list:${userId}`, 30, async () => {
+      const { rows } = await readQuery(
+        `SELECT
+           c.id AS conversation_id,
+           c.is_group,
+           c.name,
+           other.id AS other_user_id,
+           other.username AS other_username,
+           other.avatar_url AS other_avatar_url,
+           other.is_online AS other_is_online,
+           lm.content AS last_message_content,
+           lm.created_at AS last_message_at
+         FROM conversations c
+         JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = $1
+         LEFT JOIN conversation_participants op ON op.conversation_id = c.id AND op.user_id != $1
+         LEFT JOIN users other ON other.id = op.user_id
+         LEFT JOIN LATERAL (
+           SELECT content, created_at FROM messages
+           WHERE conversation_id = c.id
+           ORDER BY created_at DESC LIMIT 1
+         ) lm ON true
+         ORDER BY lm.created_at DESC NULLS LAST`,
+        [userId]
+      );
+      return rows;
+    });
   },
 
   async isParticipant(conversationId, userId) {

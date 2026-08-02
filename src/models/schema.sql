@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 CREATE TABLE IF NOT EXISTS password_reset_requests (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email           VARCHAR(255) NOT NULL UNIQUE,
@@ -119,3 +120,13 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
 
 CREATE INDEX IF NOT EXISTS idx_password_reset_expires
     ON password_reset_requests (otp_expires_at);
+
+
+-- Speeds up markReadUpTo's WHERE conversation_id = $1 AND status != 'read'
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_status
+    ON messages (conversation_id, status)
+    WHERE status != 'read';
+
+-- Replaces reliance on the OR-based composite index for calls.listForUser
+CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls (caller_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls (callee_id, started_at DESC);

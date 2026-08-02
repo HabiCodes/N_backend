@@ -1,8 +1,9 @@
 const ConversationModel = require('../models/conversationModel');
 const MessageModel = require('../models/messageModel');
-const UserModel = require('../models/userModel');                          // add this
-const { isOnline } = require('./onlineUsers');                             // add this
-const { sendMessagePushNotification } = require('../services/pushNotifications'); // add this
+const UserModel = require('../models/userModel');
+const { isOnline } = require('./onlineUsers');
+const { sendMessagePushNotification } = require('../services/pushNotifications');
+const cache = require('../services/cache');
 
 function registerChatHandlers(io, socket) {
   socket.join(socket.userId);
@@ -25,12 +26,18 @@ function registerChatHandlers(io, socket) {
         clientMsgId,
       });
 
-      ack?.({ message });
+          ack?.({ message });
 
-      const sender = await UserModel.findById(socket.userId);
-      const recipientIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
+      // Invalidate both sides' cached conversation list — cheap (one DEL
+      // each) and avoids the sender seeing their own message missing from
+      // "last message" preview for up to the cache's 30s TTL.
+           await cache.invalidate(`conversations:list:${socket.userId}`);
 
-      for (const userId of recipientIds) {
+            const sender = await UserModel.findById(socket.userId);
+             const recipientIds = await ConversationModel.getOtherParticipantIds(conversationId, socket.userId);
+
+     for (const userId of recipientIds) {
+        await cache.invalidate(`conversations:list:${userId}`);
         if (await isOnline(userId)) {
           // Live socket — deliver in real time, same as before.
           io.to(userId).emit('message:new', { message });
