@@ -10,10 +10,21 @@ const { pool } = require('./config/db');
 
 const httpServer = http.createServer(app);
 
+const { pubClient, subClient } = require('./config/redis');
+const { createAdapter } = require('@socket.io/redis-adapter');
+
 const io = new Server(httpServer, {
   cors: { origin: clientOrigins, credentials: true },
-  pingInterval: 10000, // send a ping every 10s
-  pingTimeout: 8000,   // if no pong within 8s, consider the socket dead
+  pingInterval: 10000,
+  pingTimeout: 8000,
+  adapter: createAdapter(pubClient, subClient),
+  connectionStateRecovery: {
+    // Buffers missed events for a disconnected socket and replays them
+    // on reconnect within this window, instead of the client just
+    // missing messages sent while it was briefly offline.
+    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    skipMiddlewares: true, // don't re-run socketAuthMiddleware on recovery — same authenticated session
+  },
 });
 
 initSockets(io);
